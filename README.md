@@ -20,6 +20,8 @@ headlines, and **drafts a LinkedIn post** in your signature storytelling style.
 
 ```bash
 cd ibm-news-scraper
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 python main.py --dry-run       # print draft to stdout
 python main.py                 # save draft to ./drafts/
@@ -29,10 +31,17 @@ python main.py                 # save draft to ./drafts/
 
 ### Option A — Local cron (run every Monday at 8 AM)
 
+Using the virtual environment Python interpreter:
+
 ```bash
 crontab -e
-# Add this line (adjust the path):
-0 8 * * 1 /usr/bin/python3 /absolute/path/ibm-news-scraper/main.py >> /tmp/ibm_linkedin.log 2>&1
+# Add this line (adjust the path to match your repo location):
+0 8 * * 1 /Users/josephkim/ibm-news-scraper/.venv/bin/python /Users/josephkim/ibm-news-scraper/main.py >> $HOME/ibm_linkedin.log 2>&1
+```
+
+Or run the helper script which auto-detects `.venv/bin/python`:
+```bash
+./install_cron.sh
 ```
 
 The app saves each draft to `ibm-news-scraper/drafts/linkedin_draft_YYYY-MM-DD_HHMM.md`.

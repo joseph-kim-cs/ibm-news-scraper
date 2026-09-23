@@ -3,7 +3,13 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+if [ -z "$PYTHON_BIN" ]; then
+  if [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
+    PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python"
+  else
+    PYTHON_BIN="python3"
+  fi
+fi
 LOG_FILE="${LOG_FILE:-$HOME/ibm_linkedin.log}"
 CRON_LINE="0 8 * * 1 $PYTHON_BIN $SCRIPT_DIR/main.py >> $LOG_FILE 2>&1"
 
