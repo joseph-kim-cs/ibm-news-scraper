@@ -1,0 +1,47 @@
+# IBM Headline Linker
+
+A small Python app that **scrapes IBM press releases and IBM Research blog posts
+from the last 7 days every Monday**, filters for eye-catching, business-relevant
+headlines, and **drafts a LinkedIn post** in your signature storytelling style.
+
+## What it does
+
+1. **Scrape** — pulls the last 7 days of headlines from:
+   - IBM Newsroom RSS feed: `https://newsroom.ibm.com/rss`
+   - IBM Research "latest" blog cards (HTML fallback)
+2. **Filter** — keeps only headlines containing keywords like `AI`, `watsonx`,
+   `moon`, `NASA`, `US Open`, `tennis`, `open-source`, `quantum`, `cloud`, etc.
+   Drops financial/boilerplate noise (quarterly earnings, dividends, board
+   appointments).
+3. **Draft** — picks the most eye-catching headline and maps it to one of three
+   storytelling templates that mirror your voice.
+
+## Quick start
+
+```bash
+cd ibm-news-scraper
+pip install -r requirements.txt
+python main.py --dry-run       # print draft to stdout
+python main.py                 # save draft to ./drafts/
+```
+
+## Scheduling it
+
+### Option A — Local cron (run every Monday at 8 AM)
+
+```bash
+crontab -e
+# Add this line (adjust the path):
+0 8 * * 1 /usr/bin/python3 /absolute/path/ibm-news-scraper/main.py >> /tmp/ibm_linkedin.log 2>&1
+```
+
+The app saves each draft to `ibm-news-scraper/drafts/linkedin_draft_YYYY-MM-DD_HHMM.md`.
+Review Monday morning, fire off the LinkedIn post manually.
+
+### Option B — GitHub Actions (serverless, no machine left on)
+
+Fork / clone, push to a repo, and the workflow in
+`.github/workflows/monday_ibm_scrape.yml` will run every Monday at 8 AM UTC.
+It posts the draft as a **workflow artifact** you can download from the Actions
+tab — or it can auto-post to LinkedIn via the `linkedin-api` package if you add
+`LINKEDIN_USERNAME` / `LINKEDIN_PASSWORD` repo secrets.
