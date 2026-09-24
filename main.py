@@ -74,8 +74,13 @@ class Headline:
 class DraftResult:
     """Final draft package returned to the caller."""
     headlines: List[Headline] = field(default_factory=list)
-    linkedin_post: str = ""
+    linkedin_posts: List[str] = field(default_factory=list)
     drafted_at: datetime = field(default_factory=datetime.now)
+
+    @property
+    def linkedin_post(self) -> str:
+        """Backward-compatible access to the first draft post."""
+        return self.linkedin_posts[0] if self.linkedin_posts else ""
 
 
 # ── scraping ───────────────────────────────────────────────────────────────
@@ -273,22 +278,13 @@ def _slug_dispatch(headline: Headline) -> str:
     return _general_slug(headline)
 
 
-def draft_linkedin_post(headlines: List[Headline]) -> str:
-    """Draft a LinkedIn post from the top filtered headline(s)."""
-    if not headlines:
-        return (
-            "No eye-catching IBM headlines found this week. "
-            "I'll keep watching for the next big reveal.\n\n"
-            "#IBM #AI"
-        )
-
-    # Pick the single most eye-catching headline as the primary hook.
-    primary = headlines[0]
+def draft_single_post(primary: Headline, other_headlines: List[Headline]) -> str:
+    """Draft a LinkedIn post focused on a specific primary headline."""
     post = _slug_dispatch(primary)
 
-    # If there are supporting headlines, append a "catch-up" section.
-    if len(headlines) > 1:
-        extras = headlines[1:4]
+    # Append up to 3 other headlines in the "catch-up" section
+    extras = [h for h in other_headlines if h.url != primary.url][:3]
+    if extras:
         lines = [
             "\n\n",
             "—\n",
@@ -302,8 +298,27 @@ def draft_linkedin_post(headlines: List[Headline]) -> str:
     return post
 
 
+def draft_linkedin_posts(headlines: List[Headline], max_drafts: int = 4) -> List[str]:
+    """Draft LinkedIn posts for up to max_drafts top headlines."""
+    if not headlines:
+        return [
+            "No eye-catching IBM headlines found this week. "
+            "I'll keep watching for the next big reveal.\n\n"
+            "#IBM #AI"
+        ]
+
+    top_headlines = headlines[:max_drafts]
+    return [draft_single_post(hl, headlines) for hl in top_headlines]
+
+
+def draft_linkedin_post(headlines: List[Headline]) -> str:
+    """Backward-compatible single post generator for the first headline."""
+    posts = draft_linkedin_posts(headlines, max_drafts=1)
+    return posts[0] if posts else ""
+
+
 # ── orchestration ──────────────────────────────────────────────────────────
-def run(dry_run: bool = False) -> DraftResult:
+def run(dry_run: bool = False, max_drafts: int = 4) -> DraftResult:
     """Scrape + draft. Optionally persist to a drafts folder."""
     print(f"[ibm-linkerdrafter] scraping {IBM_RSS_URL} (last {LOOKBACK_DAYS} days)…")
     headlines = scrape_headlines()
@@ -311,15 +326,19 @@ def run(dry_run: bool = False) -> DraftResult:
     for hl in headlines:
         print(f"  • [{hl.published.date()}] {hl.title}")
 
-    post = draft_linkedin_post(headlines)
-
-    result = DraftResult(headlines=headlines, linkedin_post=post)
+    posts = draft_linkedin_posts(headlines, max_drafts=max_drafts)
+    result = DraftResult(headlines=headlines, linkedin_posts=posts)
 
     if dry_run or not headlines:
         print("\n" + "=" * 72)
-        print("DRY-RUN LINKEDIN DRAFT")
+        print(f"DRY-RUN LINKEDIN DRAFTS ({len(posts)} option{'s' if len(posts) > 1 else ''})")
         print("=" * 72)
-        print(post)
+        for idx, post in enumerate(posts, 1):
+            hl = headlines[idx - 1] if idx - 1 < len(headlines) else None
+            title_str = f": {hl.title}" if hl else ""
+            print(f"\n--- DRAFT OPTION {idx}{title_str} ---\n")
+            print(post)
+            print("\n" + "-" * 72)
         print("=" * 72)
         return result
 
@@ -329,10 +348,14 @@ def run(dry_run: bool = False) -> DraftResult:
     ts = datetime.now().strftime("%Y-%m-%d_%H%M")
     draft_path = os.path.join(drafts_dir, f"linkedin_draft_{ts}.md")
     with open(draft_path, "w", encoding="utf-8") as fh:
-        fh.write(f"## Top headlines\n\n")
+        fh.write("## Top headlines\n\n")
         for hl in headlines:
             fh.write(f"- [{hl.title}]({hl.url}) — {hl.published.strftime('%Y-%m-%d')}\n")
-        fh.write(f"\n---\n\n## LinkedIn Post\n\n{post}\n")
+        fh.write("\n---\n")
+        for idx, post in enumerate(posts, 1):
+            hl = headlines[idx - 1] if idx - 1 < len(headlines) else None
+            header = f"## Draft Option {idx}: {hl.title}\n\n" if hl else f"## Draft Option {idx}\n\n"
+            fh.write(f"\n{header}{post}\n\n---\n")
     print(f"\n[saved] draft written to {draft_path}")
     return result
 
@@ -343,10 +366,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--dry-run", action="store_true",
-        help="Print the draft to stdout instead of saving a file",
+        help="Print the drafts to stdout instead of saving a file",
+    )
+    parser.add_argument(
+        "--count", type=int, default=4,
+        help="Number of headline draft options to generate (default: 4)",
     )
     args = parser.parse_args()
-    run(dry_run=args.dry_run)
+    run(dry_run=args.dry_run, max_drafts=args.count)
 
 
 if __name__ == "__main__":

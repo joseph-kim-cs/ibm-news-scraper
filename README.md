@@ -13,8 +13,7 @@ headlines, and **drafts a LinkedIn post** in your signature storytelling style.
    `moon`, `NASA`, `US Open`, `tennis`, `open-source`, `quantum`, `cloud`, etc.
    Drops financial/boilerplate noise (quarterly earnings, dividends, board
    appointments).
-3. **Draft** — picks the most eye-catching headline and maps it to one of three
-   storytelling templates that mirror your voice.
+3. **Draft** — generates drafts for the top 4 headlines (customizable with `--count N`) and maps each headline to storytelling templates that mirror your voice.
 
 ## Quick start
 
@@ -23,8 +22,9 @@ cd ibm-news-scraper
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python main.py --dry-run       # print draft to stdout
-python main.py                 # save draft to ./drafts/
+python main.py --dry-run             # print top 4 drafts to stdout
+python main.py --dry-run --count 2   # print top 2 drafts
+python main.py                       # save all 4 drafts to ./drafts/
 ```
 
 ## Scheduling it
