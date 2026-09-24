@@ -298,7 +298,22 @@ def draft_single_post(primary: Headline, other_headlines: List[Headline]) -> str
     return post
 
 
-def draft_linkedin_posts(headlines: List[Headline], max_drafts: int = 4) -> List[str]:
+def _send_macos_notification(title: str, message: str, sound: str = "default") -> None:
+    """Send a native macOS desktop notification via AppleScript osascript."""
+    if sys.platform != "darwin":
+        return
+    import subprocess
+    # Escape quotes
+    safe_title = title.replace('"', '\\"')
+    safe_msg = message.replace('"', '\\"')
+    script = f'display notification "{safe_msg}" with title "{safe_title}" sound name "{sound}"'
+    try:
+        subprocess.run(["osascript", "-e", script], check=False, capture_output=True)
+    except Exception:
+        pass
+
+
+def draft_linkedin_posts(headlines: List[Headline], max_drafts: int = 10) -> List[str]:
     """Draft LinkedIn posts for up to max_drafts top headlines."""
     if not headlines:
         return [
@@ -318,8 +333,8 @@ def draft_linkedin_post(headlines: List[Headline]) -> str:
 
 
 # ── orchestration ──────────────────────────────────────────────────────────
-def run(dry_run: bool = False, max_drafts: int = 4) -> DraftResult:
-    """Scrape + draft. Optionally persist to a drafts folder."""
+def run(dry_run: bool = False, max_drafts: int = 10, notify: bool = True) -> DraftResult:
+    """Scrape + draft. Optionally persist to a drafts folder and notify."""
     print(f"[ibm-linkerdrafter] scraping {IBM_RSS_URL} (last {LOOKBACK_DAYS} days)…")
     headlines = scrape_headlines()
     print(f"[results] {len(headlines)} eye-catching headline(s) found:")
@@ -357,6 +372,13 @@ def run(dry_run: bool = False, max_drafts: int = 4) -> DraftResult:
             header = f"## Draft Option {idx}: {hl.title}\n\n" if hl else f"## Draft Option {idx}\n\n"
             fh.write(f"\n{header}{post}\n\n---\n")
     print(f"\n[saved] draft written to {draft_path}")
+
+    if notify:
+        _send_macos_notification(
+            title="IBM Headline Linker",
+            message=f"Generated {len(posts)} Monday LinkedIn drafts ready for review!",
+        )
+
     return result
 
 
@@ -369,11 +391,15 @@ def main() -> None:
         help="Print the drafts to stdout instead of saving a file",
     )
     parser.add_argument(
-        "--count", type=int, default=4,
-        help="Number of headline draft options to generate (default: 4)",
+        "--count", type=int, default=10,
+        help="Number of headline draft options to generate (default: 10)",
+    )
+    parser.add_argument(
+        "--no-notify", action="store_true",
+        help="Disable macOS desktop notification",
     )
     args = parser.parse_args()
-    run(dry_run=args.dry_run, max_drafts=args.count)
+    run(dry_run=args.dry_run, max_drafts=args.count, notify=not args.no_notify)
 
 
 if __name__ == "__main__":

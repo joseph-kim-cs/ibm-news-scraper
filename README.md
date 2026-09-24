@@ -13,7 +13,7 @@ headlines, and **drafts a LinkedIn post** in your signature storytelling style.
    `moon`, `NASA`, `US Open`, `tennis`, `open-source`, `quantum`, `cloud`, etc.
    Drops financial/boilerplate noise (quarterly earnings, dividends, board
    appointments).
-3. **Draft** — generates drafts for the top 4 headlines (customizable with `--count N`) and maps each headline to storytelling templates that mirror your voice.
+3. **Draft** — generates drafts for the top 10 headlines (customizable with `--count N`) and maps each headline to storytelling templates that mirror your voice.
 
 ## Quick start
 
@@ -22,30 +22,31 @@ cd ibm-news-scraper
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python main.py --dry-run             # print top 4 drafts to stdout
-python main.py --dry-run --count 2   # print top 2 drafts
-python main.py                       # save all 4 drafts to ./drafts/
+python main.py --dry-run             # print top 10 drafts to stdout
+python main.py --dry-run --count 5   # print top 5 drafts
+python main.py                       # save all 10 drafts to ./drafts/ & trigger macOS notification
 ```
 
 ## Scheduling it
 
 ### Option A — Local cron (run every Monday at 8 AM)
 
-Using the virtual environment Python interpreter:
-
-```bash
-crontab -e
-# Add this line (adjust the path to match your repo location):
-0 8 * * 1 /Users/josephkim/ibm-news-scraper/.venv/bin/python /Users/josephkim/ibm-news-scraper/main.py >> $HOME/ibm_linkedin.log 2>&1
-```
-
-Or run the helper script which auto-detects `.venv/bin/python`:
+Run the helper script which auto-detects `.venv/bin/python` and configures your crontab:
 ```bash
 ./install_cron.sh
 ```
 
-The app saves each draft to `ibm-news-scraper/drafts/linkedin_draft_YYYY-MM-DD_HHMM.md`.
-Review Monday morning, fire off the LinkedIn post manually.
+Or configure manually via `crontab -e`:
+```bash
+0 8 * * 1 /Users/josephkim/ibm-news-scraper/.venv/bin/python /Users/josephkim/ibm-news-scraper/main.py >> $HOME/ibm_linkedin.log 2>&1
+```
+
+### What happens on Monday morning?
+1. At 8:00 AM on Monday, the script runs in the background.
+2. It scrapes and filters the last 7 days of IBM news.
+3. It saves the 10 draft options into `ibm-news-scraper/drafts/linkedin_draft_YYYY-MM-DD_HHMM.md`.
+4. A **native macOS desktop notification** pops up ("*IBM Headline Linker: Generated 10 Monday LinkedIn drafts ready for review!*").
+5. You can open the generated markdown file, choose your favorite draft, and publish to LinkedIn.
 
 ### Option B — GitHub Actions (serverless, no machine left on)
 
