@@ -13,8 +13,8 @@ fi
 LOG_FILE="${LOG_FILE:-$HOME/ibm_linkedin.log}"
 CRON_LINE="0 8 * * 1 $PYTHON_BIN $SCRIPT_DIR/main.py >> $LOG_FILE 2>&1"
 
-# Remove any existing entry to avoid duplicates
-( crontab -l 2>/dev/null | grep -v "main.py" ; echo "$CRON_LINE" ) | crontab -
+# Remove any existing entry to avoid duplicates and install new cron entry
+( crontab -l 2>/dev/null | grep -v "main.py" || true; echo "$CRON_LINE" ) | crontab -
 echo "✓ Cron installed: $CRON_LINE"
 echo "  Logs → $LOG_FILE"
 echo "  Drafts saved to → $SCRIPT_DIR/drafts/"
