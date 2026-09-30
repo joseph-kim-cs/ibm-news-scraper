@@ -290,50 +290,47 @@ def _slug_dispatch(headline: Headline) -> str:
 
 
 def _call_llm_drafter(headline: Headline) -> str | None:
-    """Call LLM API using BOB_API_KEY (or BOBSHELL_API_KEY / WATSONX_API_KEY / OPENAI_API_KEY).
-    
-    Generates a storytelling LinkedIn draft strictly under 250 tokens in the author's voice.
-    Falls back to None if API key is not configured or request fails.
-    """
+    """Call LLM via Bob Shell CLI (automatic for Bob API keys) or HTTP endpoint."""
     api_key = (
         os.getenv("BOB_API_KEY")
         or os.getenv("BOBSHELL_API_KEY")
         or os.getenv("WATSONX_API_KEY")
         or os.getenv("OPENAI_API_KEY")
     )
-    if not api_key or requests is None:
+    if not api_key:
         return None
 
     # Reference few-shot sample style
     sample_sports = _sports_slug(Headline(title="US Open & IBM Watsonx", url="", published=datetime.now()))
     sample_moon = _moon_slug(Headline(title="NASA & IBM Moon Model", url="", published=datetime.now()))
 
-    system_prompt = (
+    prompt = (
         "You are an expert tech writer and LinkedIn storyteller drafting engaging posts in a distinct, authentic voice.\n"
         "Style characteristics:\n"
-        "- Conversational, genuine, reflective, and relatable hook (referencing personal passion, tech excitement, or industry observation).\n"
+        "- Conversational, genuine, reflective, and relatable hook.\n"
         "- Connect the announcement to broader business impact: making complex technology easier to understand and act on, or enhancing human capability.\n"
         "- Concise, punchy paragraphs.\n"
         "- Include the article link and 3-5 relevant hashtags (e.g. #IBM #AI #watsonx).\n"
         "- CRITICAL CONSTRAINT: Keep the entire output strictly under 250 tokens (~180 words).\n\n"
-        "Here are reference style samples:\n"
-        f"--- SAMPLE 1 (Sports/Event) ---\n{sample_sports}\n\n"
-        f"--- SAMPLE 2 (Research/Moonshot) ---\n{sample_moon}\n"
-    )
-
-    user_prompt = (
-        f"Draft a LinkedIn post based on this IBM announcement:\n"
+        "Reference style samples:\n"
+        f"--- SAMPLE 1 ---\n{sample_sports}\n\n"
+        f"--- SAMPLE 2 ---\n{sample_moon}\n\n"
+        f"Draft a LinkedIn post for this announcement:\n"
         f"Headline: {headline.title}\n"
         f"URL: {headline.url}\n"
         f"Source: {headline.source}\n\n"
-        f"Remember: Output ONLY the post body with the link and hashtags. Keep under 250 tokens."
+        "Output ONLY the LinkedIn post text, link, and hashtags. Keep under 250 tokens."
     )
 
     endpoint = os.getenv("BOB_API_URL") or os.getenv("LLM_API_URL")
+    # If the user left placeholder text, treat as unset
+    if endpoint and ("your-endpoint" in endpoint or "example.com" in endpoint):
+        endpoint = None
+
     project_id = os.getenv("WATSONX_PROJECT_ID")
 
-    # 1. Custom / OpenAI-compatible / Model Gateway endpoint (when endpoint is explicitly set)
-    if endpoint:
+    # 1. Direct HTTP endpoint if explicit URL provided
+    if endpoint and requests is not None:
         try:
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -346,8 +343,7 @@ def _call_llm_drafter(headline: Headline) -> str | None:
             payload = {
                 "model": os.getenv("LLM_MODEL", "ibm/granite-3-8b-instruct"),
                 "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
+                    {"role": "user", "content": prompt},
                 ],
                 "max_tokens": 250,
                 "temperature": 0.7,
@@ -364,8 +360,8 @@ def _call_llm_drafter(headline: Headline) -> str | None:
         except Exception as exc:
             print(f"[warn] LLM request to {endpoint} failed: {exc}", file=sys.stderr)
 
-    # 2. Watsonx.ai direct endpoint integration (if WATSONX_PROJECT_ID is set or if key is IBM Cloud IAM key)
-    if project_id:
+    # 2. Watsonx.ai direct endpoint integration
+    if project_id and requests is not None:
         try:
             iam_resp = requests.post(
                 "https://iam.cloud.ibm.com/identity/token",
@@ -376,9 +372,8 @@ def _call_llm_drafter(headline: Headline) -> str | None:
             if iam_resp.status_code == 200:
                 token = iam_resp.json().get("access_token")
                 wx_url = (os.getenv("WATSONX_URL") or "https://us-south.ml.cloud.ibm.com").rstrip("/") + "/ml/v1/text/generation?version=2024-05-01"
-                full_input = f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant:"
                 wx_payload = {
-                    "input": full_input,
+                    "input": prompt,
                     "parameters": {
                         "max_new_tokens": 250,
                         "temperature": 0.7,
@@ -400,20 +395,45 @@ def _call_llm_drafter(headline: Headline) -> str | None:
                         return results[0].get("generated_text", "").strip()
                 else:
                     print(f"[warn] watsonx.ai returned HTTP {wx_resp.status_code}: {wx_resp.text[:180]}", file=sys.stderr)
-            else:
-                print(f"[warn] IBM Cloud IAM authentication failed with HTTP {iam_resp.status_code}", file=sys.stderr)
         except Exception as exc:
             print(f"[warn] watsonx.ai generation request failed: {exc}", file=sys.stderr)
 
-    # 3. Informative warning if an API key is provided but endpoint/project_id was missing
-    if not endpoint and not project_id:
-        print(
-            "[notice] API key detected in .env, but no target endpoint configured.\n"
-            "         • If using an OpenAI-compatible/Bob inference endpoint: set BOB_API_URL=https://... in .env\n"
-            "         • If using IBM watsonx.ai: set WATSONX_PROJECT_ID=... in .env\n"
-            "         Falling back to local template drafts.",
-            file=sys.stderr,
-        )
+    # 3. Bob CLI headless execution (works natively with Bob API Key)
+    import shutil
+    import subprocess
+    bob_bin = shutil.which("bob")
+    if bob_bin:
+        try:
+            env = dict(os.environ)
+            env["BOBSHELL_API_KEY"] = api_key
+            env["BOB_API_KEY"] = api_key
+            cmd = [
+                bob_bin, "run",
+                "--accept-license",
+                "--disable-mcp",
+                "--disable-subagents",
+                "--format", "pretty",
+                "--log-level", "error",
+                prompt,
+            ]
+            team_id = os.getenv("BOB_TEAM_ID")
+            if team_id:
+                cmd.extend(["--team-id", team_id])
+
+            result = subprocess.run(
+                cmd,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=45,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            elif result.stderr.strip():
+                print(f"[warn] Bob CLI returned code {result.returncode}: {result.stderr[:200]}", file=sys.stderr)
+        except Exception as exc:
+            print(f"[warn] Bob CLI execution failed: {exc}", file=sys.stderr)
 
     return None
 
