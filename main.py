@@ -23,7 +23,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List
 
-# ── optional deps ──────────────────────────────────────────────────────────
+# ── optional deps & env loading ────────────────────────────────────────────
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except ImportError:
+    pass
+
 try:
     import feedparser  # type: ignore
 except ImportError:
@@ -33,6 +39,11 @@ try:
     from bs4 import BeautifulSoup  # type: ignore
 except ImportError:
     BeautifulSoup = None
+
+try:
+    import requests  # type: ignore
+except ImportError:
+    requests = None
 
 # ── constants ──────────────────────────────────────────────────────────────
 IBM_RSS_URL = "https://newsroom.ibm.com/rss"
@@ -278,9 +289,124 @@ def _slug_dispatch(headline: Headline) -> str:
     return _general_slug(headline)
 
 
+def _call_llm_drafter(headline: Headline) -> str | None:
+    """Call LLM API using BOB_API_KEY (or BOBSHELL_API_KEY / WATSONX_API_KEY).
+    
+    Generates a storytelling LinkedIn draft strictly under 250 tokens in the author's voice.
+    Falls back to None if API key is not configured or request fails.
+    """
+    api_key = (
+        os.getenv("BOB_API_KEY")
+        or os.getenv("BOBSHELL_API_KEY")
+        or os.getenv("WATSONX_API_KEY")
+    )
+    if not api_key or requests is None:
+        return None
+
+    # Reference few-shot sample style
+    sample_sports = _sports_slug(Headline(title="US Open & IBM Watsonx", url="", published=datetime.now()))
+    sample_moon = _moon_slug(Headline(title="NASA & IBM Moon Model", url="", published=datetime.now()))
+
+    system_prompt = (
+        "You are an expert tech writer and LinkedIn storyteller drafting engaging posts in a distinct, authentic voice.\n"
+        "Style characteristics:\n"
+        "- Conversational, genuine, reflective, and relatable hook (referencing personal passion, tech excitement, or industry observation).\n"
+        "- Connect the announcement to broader business impact: making complex technology easier to understand and act on, or enhancing human capability.\n"
+        "- Concise, punchy paragraphs.\n"
+        "- Include the article link and 3-5 relevant hashtags (e.g. #IBM #AI #watsonx).\n"
+        "- CRITICAL CONSTRAINT: Keep the entire output strictly under 250 tokens (~180 words).\n\n"
+        "Here are reference style samples:\n"
+        f"--- SAMPLE 1 (Sports/Event) ---\n{sample_sports}\n\n"
+        f"--- SAMPLE 2 (Research/Moonshot) ---\n{sample_moon}\n"
+    )
+
+    user_prompt = (
+        f"Draft a LinkedIn post based on this IBM announcement:\n"
+        f"Headline: {headline.title}\n"
+        f"URL: {headline.url}\n"
+        f"Source: {headline.source}\n\n"
+        f"Remember: Output ONLY the post body with the link and hashtags. Keep under 250 tokens."
+    )
+
+    endpoint = os.getenv("BOB_API_URL") or os.getenv("LLM_API_URL")
+
+    # 1. Custom or OpenAI-compatible endpoint (default if URL provided)
+    if endpoint:
+        try:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            team_id = os.getenv("BOB_TEAM_ID")
+            if team_id:
+                headers["X-Team-Id"] = team_id
+
+            payload = {
+                "model": os.getenv("LLM_MODEL", "ibm/granite-3-8b-instruct"),
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "max_tokens": 250,
+                "temperature": 0.7,
+            }
+            resp = requests.post(endpoint, headers=headers, json=payload, timeout=20)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "choices" in data and len(data["choices"]) > 0:
+                    return data["choices"][0]["message"]["content"].strip()
+                if "results" in data and len(data["results"]) > 0:
+                    return data["results"][0].get("generated_text", "").strip()
+        except Exception as exc:
+            print(f"[warn] LLM generation request failed: {exc}", file=sys.stderr)
+
+    # 2. Watsonx.ai direct endpoint integration if WATSONX_PROJECT_ID or WATSONX_API_KEY is present
+    project_id = os.getenv("WATSONX_PROJECT_ID")
+    if project_id:
+        try:
+            # Exchange IAM API key for IAM token
+            iam_resp = requests.post(
+                "https://iam.cloud.ibm.com/identity/token",
+                data={"grant_type": "urn:ibm:params:oauth:grant-type:apikey", "apikey": api_key},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=15,
+            )
+            if iam_resp.status_code == 200:
+                token = iam_resp.json().get("access_token")
+                wx_url = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com") + "/ml/v1/text/generation?version=2024-05-01"
+                full_input = f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant:"
+                wx_payload = {
+                    "input": full_input,
+                    "parameters": {
+                        "max_new_tokens": 250,
+                        "temperature": 0.7,
+                        "decoding_method": "sample",
+                    },
+                    "model_id": os.getenv("WATSONX_MODEL_ID", "ibm/granite-3-8b-instruct"),
+                    "project_id": project_id,
+                }
+                wx_resp = requests.post(
+                    wx_url,
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json=wx_payload,
+                    timeout=20,
+                )
+                if wx_resp.status_code == 200:
+                    wx_data = wx_resp.json()
+                    results = wx_data.get("results", [])
+                    if results:
+                        return results[0].get("generated_text", "").strip()
+        except Exception as exc:
+            print(f"[warn] watsonx.ai generation request failed: {exc}", file=sys.stderr)
+
+    return None
+
+
 def draft_single_post(primary: Headline, other_headlines: List[Headline]) -> str:
     """Draft a LinkedIn post focused on a specific primary headline."""
-    post = _slug_dispatch(primary)
+    # Attempt LLM generation first
+    llm_draft = _call_llm_drafter(primary)
+    post = llm_draft if llm_draft else _slug_dispatch(primary)
 
     # Append up to 3 other headlines in the "catch-up" section
     extras = [h for h in other_headlines if h.url != primary.url][:3]

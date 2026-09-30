@@ -22,10 +22,21 @@ cd ibm-news-scraper
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env                 # add your BOB_API_KEY in .env
 python main.py --dry-run             # print top 10 drafts to stdout
 python main.py --dry-run --count 5   # print top 5 drafts
 python main.py                       # save all 10 drafts to ./drafts/ & trigger macOS notification
 ```
+
+## LLM Configuration (.env)
+
+The scraper uses an LLM to dynamically generate personalized drafts under 250 tokens in your signature voice, using the built-in templates as few-shot style references.
+
+Create or edit your `.env` file:
+```dotenv
+BOB_API_KEY=your-api-key-here
+```
+*(If no API key is provided, the scraper automatically falls back to the deterministic local storytelling templates).*
 
 ## Scheduling it
 
