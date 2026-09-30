@@ -30,13 +30,26 @@ python main.py                       # save all 10 drafts to ./drafts/ & trigger
 
 ## LLM Configuration (.env)
 
-The scraper uses an LLM to dynamically generate personalized drafts under 250 tokens in your signature voice, using the built-in templates as few-shot style references.
+The scraper dynamically generates personalized drafts under 250 tokens in your signature voice, using the built-in templates as few-shot style references.
 
-Create or edit your `.env` file:
+Configure your `.env` file based on your provider:
+
+### Option 1: OpenAI-compatible / Proxy / Custom Endpoint
 ```dotenv
 BOB_API_KEY=your-api-key-here
+BOB_API_URL=https://your-endpoint-host/v1/chat/completions
+LLM_MODEL=ibm/granite-3-8b-instruct
 ```
-*(If no API key is provided, the scraper automatically falls back to the deterministic local storytelling templates).*
+
+### Option 2: IBM watsonx.ai
+```dotenv
+WATSONX_API_KEY=your-ibm-cloud-iam-api-key
+WATSONX_PROJECT_ID=your-watsonx-project-id
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+WATSONX_MODEL_ID=ibm/granite-3-8b-instruct
+```
+
+*(If no endpoint or API key is provided, the scraper automatically falls back to the deterministic local storytelling templates).*
 
 ## Scheduling it
 

@@ -290,7 +290,7 @@ def _slug_dispatch(headline: Headline) -> str:
 
 
 def _call_llm_drafter(headline: Headline) -> str | None:
-    """Call LLM API using BOB_API_KEY (or BOBSHELL_API_KEY / WATSONX_API_KEY).
+    """Call LLM API using BOB_API_KEY (or BOBSHELL_API_KEY / WATSONX_API_KEY / OPENAI_API_KEY).
     
     Generates a storytelling LinkedIn draft strictly under 250 tokens in the author's voice.
     Falls back to None if API key is not configured or request fails.
@@ -299,6 +299,7 @@ def _call_llm_drafter(headline: Headline) -> str | None:
         os.getenv("BOB_API_KEY")
         or os.getenv("BOBSHELL_API_KEY")
         or os.getenv("WATSONX_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
     )
     if not api_key or requests is None:
         return None
@@ -329,8 +330,9 @@ def _call_llm_drafter(headline: Headline) -> str | None:
     )
 
     endpoint = os.getenv("BOB_API_URL") or os.getenv("LLM_API_URL")
+    project_id = os.getenv("WATSONX_PROJECT_ID")
 
-    # 1. Custom or OpenAI-compatible endpoint (default if URL provided)
+    # 1. Custom / OpenAI-compatible / Model Gateway endpoint (when endpoint is explicitly set)
     if endpoint:
         try:
             headers = {
@@ -357,14 +359,14 @@ def _call_llm_drafter(headline: Headline) -> str | None:
                     return data["choices"][0]["message"]["content"].strip()
                 if "results" in data and len(data["results"]) > 0:
                     return data["results"][0].get("generated_text", "").strip()
+            else:
+                print(f"[warn] LLM endpoint ({endpoint}) returned HTTP {resp.status_code}: {resp.text[:180]}", file=sys.stderr)
         except Exception as exc:
-            print(f"[warn] LLM generation request failed: {exc}", file=sys.stderr)
+            print(f"[warn] LLM request to {endpoint} failed: {exc}", file=sys.stderr)
 
-    # 2. Watsonx.ai direct endpoint integration if WATSONX_PROJECT_ID or WATSONX_API_KEY is present
-    project_id = os.getenv("WATSONX_PROJECT_ID")
+    # 2. Watsonx.ai direct endpoint integration (if WATSONX_PROJECT_ID is set or if key is IBM Cloud IAM key)
     if project_id:
         try:
-            # Exchange IAM API key for IAM token
             iam_resp = requests.post(
                 "https://iam.cloud.ibm.com/identity/token",
                 data={"grant_type": "urn:ibm:params:oauth:grant-type:apikey", "apikey": api_key},
@@ -373,7 +375,7 @@ def _call_llm_drafter(headline: Headline) -> str | None:
             )
             if iam_resp.status_code == 200:
                 token = iam_resp.json().get("access_token")
-                wx_url = os.getenv("WATSONX_URL", "https://us-south.ml.cloud.ibm.com") + "/ml/v1/text/generation?version=2024-05-01"
+                wx_url = (os.getenv("WATSONX_URL") or "https://us-south.ml.cloud.ibm.com").rstrip("/") + "/ml/v1/text/generation?version=2024-05-01"
                 full_input = f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant:"
                 wx_payload = {
                     "input": full_input,
@@ -396,8 +398,22 @@ def _call_llm_drafter(headline: Headline) -> str | None:
                     results = wx_data.get("results", [])
                     if results:
                         return results[0].get("generated_text", "").strip()
+                else:
+                    print(f"[warn] watsonx.ai returned HTTP {wx_resp.status_code}: {wx_resp.text[:180]}", file=sys.stderr)
+            else:
+                print(f"[warn] IBM Cloud IAM authentication failed with HTTP {iam_resp.status_code}", file=sys.stderr)
         except Exception as exc:
             print(f"[warn] watsonx.ai generation request failed: {exc}", file=sys.stderr)
+
+    # 3. Informative warning if an API key is provided but endpoint/project_id was missing
+    if not endpoint and not project_id:
+        print(
+            "[notice] API key detected in .env, but no target endpoint configured.\n"
+            "         • If using an OpenAI-compatible/Bob inference endpoint: set BOB_API_URL=https://... in .env\n"
+            "         • If using IBM watsonx.ai: set WATSONX_PROJECT_ID=... in .env\n"
+            "         Falling back to local template drafts.",
+            file=sys.stderr,
+        )
 
     return None
 
