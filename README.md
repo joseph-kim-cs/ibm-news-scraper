@@ -1,11 +1,13 @@
 # IBM Headline Linker
 
-A small Python app that **scrapes IBM press releases and IBM Research blog posts
-from the last 7 days every Monday**, filters for eye-catching, business-relevant
-headlines, and **drafts a LinkedIn post** in your signature storytelling style.
+A Python app with two modes:
+
+1. **Headline mode** — scrapes IBM press releases and IBM Research blog posts from the last 7 days, filters for eye-catching business-relevant headlines, and drafts LinkedIn posts in your signature storytelling style.
+2. **Event mode** — takes any event you attended (IBM Think, a customer workshop, a conference, anything) and drafts a personalized LinkedIn post about your experience.
 
 ## What it does
 
+### Headline mode
 1. **Scrape** — pulls the last 7 days of headlines from:
    - IBM Newsroom RSS feed: `https://newsroom.ibm.com/rss`
    - IBM Research "latest" blog cards (HTML fallback)
@@ -15,6 +17,12 @@ headlines, and **drafts a LinkedIn post** in your signature storytelling style.
    appointments).
 3. **Draft** — generates drafts for the top 10 headlines (customizable with `--count N`) and maps each headline to storytelling templates that mirror your voice.
 
+### Event mode
+Provide details about any event you attended and the app drafts a LinkedIn post
+capturing your personal experience, key takeaways, and a forward-looking hook.
+
+---
+
 ## Quick start
 
 ```bash
@@ -23,10 +31,45 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env                 # add your BOB_API_KEY in .env
-python main.py --dry-run             # print top 10 drafts to stdout
-python main.py --dry-run --count 5   # print top 5 drafts
+python main.py --dry-run             # print top 10 headline drafts to stdout
+python main.py --dry-run --count 5   # print top 5 headline drafts
 python main.py                       # save all 10 drafts to ./drafts/ & trigger macOS notification
 ```
+
+---
+
+## Drafting a LinkedIn post for an event
+
+Use the `--event-name` and `--event-date` flags to switch into event mode.
+All other event flags are optional but produce a richer, more personalized draft.
+
+```bash
+python main.py \
+  --event-name "IBM Think 2025" \
+  --event-date "2025-05-05" \
+  --event-location "Boston, MA" \
+  --event-description "Attended the watsonx keynote and hands-on AI labs. Great conversations with engineering leaders about agentic AI." \
+  --event-url "https://www.ibm.com/events/think/" \
+  --dry-run
+```
+
+**What each flag does:**
+
+| Flag | Required | Description |
+|---|---|---|
+| `--event-name` | ✅ | Name of the event, e.g. `"IBM Think 2025"` |
+| `--event-date` | ✅ | Date of the event in `YYYY-MM-DD` format |
+| `--event-location` | optional | City or venue, e.g. `"Boston, MA"` |
+| `--event-description` | optional | Your notes: key sessions, takeaways, conversations |
+| `--event-url` | optional | A link to the event page (included in the post) |
+| `--dry-run` | optional | Print the draft to the terminal instead of saving a file |
+
+**Without `--dry-run`**, the draft is saved to `drafts/event_draft_<name>_<timestamp>.md`
+and a macOS desktop notification fires when it's ready.
+
+> **Tip:** The more detail you put in `--event-description`, the more specific
+> and authentic the generated post will be. Include session names, speaker quotes,
+> or the one thing that surprised you most.
 
 ## LLM Configuration (.env)
 
