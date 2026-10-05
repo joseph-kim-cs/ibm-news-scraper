@@ -413,6 +413,7 @@ def _call_llm_drafter(headline: Headline) -> str | None:
                 "--disable-mcp",
                 "--disable-subagents",
                 "--format", "pretty",
+                "--max-turns", "1",
                 "--log-level", "error",
                 prompt,
             ]

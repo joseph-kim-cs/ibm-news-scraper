@@ -53,24 +53,28 @@ WATSONX_MODEL_ID=ibm/granite-3-8b-instruct
 
 ## Scheduling it
 
-### Option A — Local cron (run every Monday at 8 AM)
+### Option A — macOS LaunchAgent (Recommended for macOS)
 
-Run the helper script which auto-detects `.venv/bin/python` and configures your crontab:
+On macOS, `cron` jobs will **not run or catch up** if your laptop/desktop is asleep at 8:00 AM. Using a macOS `LaunchAgent` is the Apple-native solution: it schedules the job for Monday 8:00 AM and **automatically triggers it the moment your Mac wakes up** if the machine was asleep.
+
+To install or update the LaunchAgent:
+```bash
+./install_schedule.sh
+```
+
+### Option B — Traditional Crontab
+
+If you prefer crontab:
 ```bash
 ./install_cron.sh
 ```
 
-Or configure manually via `crontab -e`:
-```bash
-0 8 * * 1 /Users/josephkim/ibm-news-scraper/.venv/bin/python /Users/josephkim/ibm-news-scraper/main.py >> $HOME/ibm_linkedin.log 2>&1
-```
-
 ### What happens on Monday morning?
-1. At 8:00 AM on Monday, the script runs in the background.
+1. At 8:00 AM on Monday (or as soon as you wake/open your Mac), the script runs seamlessly in the background.
 2. It scrapes and filters the last 7 days of IBM news.
-3. It saves the 10 draft options into `ibm-news-scraper/drafts/linkedin_draft_YYYY-MM-DD_HHMM.md`.
-4. A **native macOS desktop notification** pops up ("*IBM Headline Linker: Generated 10 Monday LinkedIn drafts ready for review!*").
-5. You can open the generated markdown file, choose your favorite draft, and publish to LinkedIn.
+3. It generates LinkedIn drafts using Bob AI and saves them to `ibm-news-scraper/drafts/linkedin_draft_YYYY-MM-DD_HHMM.md`.
+4. A **native macOS desktop notification** alerts you that your drafts are ready.
+5. You can open the generated markdown file, pick your favorite draft, and post.
 
 ### Option B — GitHub Actions (serverless, no machine left on)
 
