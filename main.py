@@ -12,6 +12,13 @@ Two deployment options are included:
 
 Run directly:  python3 main.py
          or:   python3 main.py --dry-run  (prints post without saving)
+
+Event post mode (draft a LinkedIn post from a custom event you attended):
+         python3 main.py --event-name "IBM Think 2025" \\
+                         --event-date "2025-05-05" \\
+                         --event-location "Boston, MA" \\
+                         --event-description "Keynote on watsonx and agentic AI" \\
+                         --event-url "https://www.ibm.com/events/think/"
 """
 
 from __future__ import annotations
@@ -79,6 +86,16 @@ class Headline:
     url: str
     published: datetime
     source: str = "IBM Newsroom"
+
+
+@dataclass
+class Event:
+    """A custom event the user attended, used to draft a LinkedIn post."""
+    name: str
+    date: str          # ISO date string, e.g. "2025-05-05"
+    location: str = ""
+    description: str = ""
+    url: str = ""
 
 
 @dataclass
@@ -439,6 +456,199 @@ def _call_llm_drafter(headline: Headline) -> str | None:
     return None
 
 
+
+def _call_llm_event_drafter(event: "Event") -> str | None:
+    """Call LLM to draft a LinkedIn post about a custom event the user attended."""
+    api_key = (
+        os.getenv("BOB_API_KEY")
+        or os.getenv("BOBSHELL_API_KEY")
+        or os.getenv("WATSONX_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+    )
+    if not api_key:
+        return None
+
+    location_line = f"Location: {event.location}\n" if event.location else ""
+    url_line = f"Event URL / reference: {event.url}\n" if event.url else ""
+
+    prompt = (
+        "You are an expert tech writer and LinkedIn storyteller.\n"
+        "The user attended or hosted an event and wants to share the experience on LinkedIn.\n"
+        "Style characteristics:\n"
+        "- Start with a genuine, personal hook — what made the event stand out.\n"
+        "- Highlight one or two key takeaways or conversations that stuck with you.\n"
+        "- Reflect on what it means for your field or community.\n"
+        "- Conversational, concise paragraphs. No corporate fluff.\n"
+        "- End with a forward-looking thought or question to spark engagement.\n"
+        "- Include the event URL (if provided) and 3-5 relevant hashtags.\n"
+        "- CRITICAL CONSTRAINT: Keep the entire output strictly under 280 tokens (~200 words).\n\n"
+        "Event details:\n"
+        f"Name: {event.name}\n"
+        f"Date: {event.date}\n"
+        f"{location_line}"
+        f"Description / notes: {event.description}\n"
+        f"{url_line}"
+        "\nOutput ONLY the LinkedIn post text, link (if any), and hashtags. Keep under 280 tokens."
+    )
+
+    endpoint = os.getenv("BOB_API_URL") or os.getenv("LLM_API_URL")
+    if endpoint and ("your-endpoint" in endpoint or "example.com" in endpoint):
+        endpoint = None
+
+    project_id = os.getenv("WATSONX_PROJECT_ID")
+
+    # 1. Direct HTTP endpoint
+    if endpoint and requests is not None:
+        try:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            team_id = os.getenv("BOB_TEAM_ID")
+            if team_id:
+                headers["X-Team-Id"] = team_id
+            payload = {
+                "model": os.getenv("LLM_MODEL", "ibm/granite-3-8b-instruct"),
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 280,
+                "temperature": 0.75,
+            }
+            resp = requests.post(endpoint, headers=headers, json=payload, timeout=20)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "choices" in data and data["choices"]:
+                    return data["choices"][0]["message"]["content"].strip()
+                if "results" in data and data["results"]:
+                    return data["results"][0].get("generated_text", "").strip()
+            else:
+                print(f"[warn] LLM endpoint returned HTTP {resp.status_code}: {resp.text[:180]}", file=sys.stderr)
+        except Exception as exc:
+            print(f"[warn] LLM request failed: {exc}", file=sys.stderr)
+
+    # 2. Watsonx.ai direct endpoint
+    if project_id and requests is not None:
+        try:
+            iam_resp = requests.post(
+                "https://iam.cloud.ibm.com/identity/token",
+                data={"grant_type": "urn:ibm:params:oauth:grant-type:apikey", "apikey": api_key},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=15,
+            )
+            if iam_resp.status_code == 200:
+                token = iam_resp.json().get("access_token")
+                wx_url = (os.getenv("WATSONX_URL") or "https://us-south.ml.cloud.ibm.com").rstrip("/") + "/ml/v1/text/generation?version=2024-05-01"
+                wx_payload = {
+                    "input": prompt,
+                    "parameters": {
+                        "max_new_tokens": 280,
+                        "temperature": 0.75,
+                        "decoding_method": "sample",
+                    },
+                    "model_id": os.getenv("WATSONX_MODEL_ID", "ibm/granite-3-8b-instruct"),
+                    "project_id": project_id,
+                }
+                wx_resp = requests.post(
+                    wx_url,
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json=wx_payload,
+                    timeout=20,
+                )
+                if wx_resp.status_code == 200:
+                    results = wx_resp.json().get("results", [])
+                    if results:
+                        return results[0].get("generated_text", "").strip()
+                else:
+                    print(f"[warn] watsonx.ai returned HTTP {wx_resp.status_code}: {wx_resp.text[:180]}", file=sys.stderr)
+        except Exception as exc:
+            print(f"[warn] watsonx.ai event draft failed: {exc}", file=sys.stderr)
+
+    # 3. Bob CLI headless execution
+    import shutil
+    import subprocess
+    bob_bin = shutil.which("bob")
+    if bob_bin:
+        try:
+            env = dict(os.environ)
+            env["BOBSHELL_API_KEY"] = api_key
+            env["BOB_API_KEY"] = api_key
+            cmd = [
+                bob_bin, "run",
+                "--accept-license",
+                "--disable-mcp",
+                "--disable-subagents",
+                "--format", "pretty",
+                "--max-turns", "1",
+                "--log-level", "error",
+                prompt,
+            ]
+            team_id = os.getenv("BOB_TEAM_ID")
+            if team_id:
+                cmd.extend(["--team-id", team_id])
+            result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=45, check=False)
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+            elif result.stderr.strip():
+                print(f"[warn] Bob CLI returned code {result.returncode}: {result.stderr[:200]}", file=sys.stderr)
+        except Exception as exc:
+            print(f"[warn] Bob CLI execution failed: {exc}", file=sys.stderr)
+
+    return None
+
+
+def draft_event_post(event: "Event", dry_run: bool = False) -> str:
+    """Draft a LinkedIn post for a custom event and optionally save it to disk."""
+    print(f"[event-drafter] drafting LinkedIn post for: {event.name} ({event.date})")
+
+    llm_draft = _call_llm_event_drafter(event)
+
+    if llm_draft:
+        post = llm_draft
+    else:
+        # Template fallback when no LLM is available
+        loc_str = f" in {event.location}" if event.location else ""
+        desc_str = f"\n\n{event.description}" if event.description else ""
+        url_str = f"\n\n{event.url}" if event.url else ""
+        post = (
+            f"Just wrapped up {event.name}{loc_str} ({event.date}) — "
+            f"and I'm still processing everything.{desc_str}"
+            f"\n\nThe conversations, the energy, the ideas — "
+            f"there's something special about being in the room where it happens."
+            f"{url_str}"
+            f"\n\n#IBM #Tech #Innovation"
+        )
+
+    if dry_run:
+        print("\n" + "=" * 72)
+        print(f"EVENT LINKEDIN DRAFT: {event.name}")
+        print("=" * 72)
+        print(post)
+        print("=" * 72)
+        return post
+
+    drafts_dir = os.path.join(os.path.dirname(__file__), "drafts")
+    os.makedirs(drafts_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M")
+    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in event.name).strip().replace(" ", "_")
+    draft_path = os.path.join(drafts_dir, f"event_draft_{safe_name}_{ts}.md")
+    with open(draft_path, "w", encoding="utf-8") as fh:
+        fh.write(f"# LinkedIn Draft — {event.name}\n\n")
+        fh.write(f"**Date:** {event.date}\n")
+        if event.location:
+            fh.write(f"**Location:** {event.location}\n")
+        if event.url:
+            fh.write(f"**URL:** {event.url}\n")
+        if event.description:
+            fh.write(f"\n**Notes:** {event.description}\n")
+        fh.write(f"\n---\n\n{post}\n")
+    print(f"[saved] event draft written to {draft_path}")
+    _send_macos_notification(
+        title="IBM Headline Linker",
+        message=f"Event draft for '{event.name}' is ready!",
+    )
+    return post
+
+
+
 def draft_single_post(primary: Headline, other_headlines: List[Headline]) -> str:
     """Draft a LinkedIn post focused on a specific primary headline."""
     # Attempt LLM generation first
@@ -561,7 +771,36 @@ def main() -> None:
         "--no-notify", action="store_true",
         help="Disable macOS desktop notification",
     )
+
+    # ── event post flags ───────────────────────────────────────────────────
+    event_group = parser.add_argument_group(
+        "event post",
+        "Draft a LinkedIn post from a custom event you attended. "
+        "Requires at least --event-name and --event-date.",
+    )
+    event_group.add_argument("--event-name", metavar="NAME", help="Event name, e.g. 'IBM Think 2025'")
+    event_group.add_argument("--event-date", metavar="DATE", help="Event date, e.g. '2025-05-05'")
+    event_group.add_argument("--event-location", metavar="LOCATION", default="", help="City / venue")
+    event_group.add_argument("--event-description", metavar="DESCRIPTION", default="",
+                             help="Key takeaways, talks, or notes from the event")
+    event_group.add_argument("--event-url", metavar="URL", default="", help="Event URL or reference link")
+
     args = parser.parse_args()
+
+    # If event flags are provided, run event drafting mode instead of headline scraping
+    if args.event_name:
+        if not args.event_date:
+            parser.error("--event-date is required when --event-name is provided")
+        event = Event(
+            name=args.event_name,
+            date=args.event_date,
+            location=args.event_location,
+            description=args.event_description,
+            url=args.event_url,
+        )
+        draft_event_post(event, dry_run=args.dry_run)
+        return
+
     run(dry_run=args.dry_run, max_drafts=args.count, notify=not args.no_notify)
 
 
