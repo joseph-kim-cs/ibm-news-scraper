@@ -158,6 +158,44 @@ def _call_watsonx(
     return None
 
 
+def _clean_llm_response(text: str) -> str:
+    """Strip transcript wrappers, terminal ANSI codes, and prompt echoes."""
+    import re
+
+    # 1. Remove ANSI escape sequences (e.g. hyperlinks \x1b]8;;\x1b\)
+    ansi_escape = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\].*?(?:\x1b\\|\x07))")
+    text = ansi_escape.sub("", text)
+
+    # 2. Extract Assistant response if output has chat transcript headers like "Assistant (1) ... "
+    if "Assistant" in text:
+        parts = re.split(r"Assistant(?:\s*\(\d+\))?.*?\n", text)
+        if len(parts) > 1:
+            text = parts[-1]
+
+    # 3. If "User" section exists before, remove it
+    if "User (" in text and "Assistant" not in text:
+        markers = [
+            "Output ONLY the LinkedIn post text, link, and hashtags.",
+            "Output ONLY the LinkedIn post text, link (if any), and hashtags.",
+            "Keep under 250 tokens.",
+            "Keep under 280 tokens.",
+        ]
+        for marker in markers:
+            if marker in text:
+                text = text.split(marker)[-1]
+                break
+
+    # 4. Remove code fence wrappers if present
+    text = re.sub(r"^```(?:markdown|text)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+
+    # 5. Remove leading/trailing horizontal rules or dividers
+    text = re.sub(r"^[─\-=_\s]+", "", text)
+    text = re.sub(r"[─\-=_\s]+$", "", text)
+
+    return text.strip()
+
+
 def _call_bob_cli(prompt: str, api_key: str) -> Optional[str]:
     """Try the Bob CLI in headless mode (works natively with a Bob API key)."""
     bob_bin = shutil.which("bob")
@@ -172,6 +210,7 @@ def _call_bob_cli(prompt: str, api_key: str) -> Optional[str]:
         cmd = [
             bob_bin, "run",
             "--accept-license",
+            "--trust",
             "--disable-mcp",
             "--disable-subagents",
             "--format", "pretty",
@@ -184,10 +223,11 @@ def _call_bob_cli(prompt: str, api_key: str) -> Optional[str]:
             cmd.extend(["--team-id", team_id])
 
         result = subprocess.run(
-            cmd, env=env, capture_output=True, text=True, timeout=45, check=False
+            cmd, env=env, capture_output=True, text=True, timeout=90, check=False
         )
         if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+            raw = result.stdout.strip()
+            return _clean_llm_response(raw)
         if result.stderr.strip():
             print(
                 f"[warn] Bob CLI returned code {result.returncode}: {result.stderr[:200]}",
