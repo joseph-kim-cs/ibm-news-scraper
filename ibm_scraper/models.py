@@ -15,6 +15,7 @@ class Headline:
     url: str
     published: datetime
     source: str = "IBM Newsroom"
+    tavily_context: str = ""  # populated by tavily_search.enrich_headlines()
 
 
 @dataclass

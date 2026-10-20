@@ -114,6 +114,13 @@ def _build_headline_prompt(headline: Headline) -> str:
     sample_moon = _moon_slug(
         Headline(title="NASA & IBM Moon Model", url="", published=datetime.now())
     )
+    context_block = ""
+    if headline.tavily_context:
+        context_block = (
+            f"\nAdditional web context (use to add specific detail, do NOT copy verbatim):\n"
+            f"{headline.tavily_context}\n"
+        )
+
     return (
         "You are an expert tech writer and LinkedIn storyteller drafting engaging posts "
         "in a distinct, authentic voice.\n"
@@ -130,7 +137,8 @@ def _build_headline_prompt(headline: Headline) -> str:
         f"Draft a LinkedIn post for this announcement:\n"
         f"Headline: {headline.title}\n"
         f"URL: {headline.url}\n"
-        f"Source: {headline.source}\n\n"
+        f"Source: {headline.source}\n"
+        f"{context_block}\n"
         "Output ONLY the LinkedIn post text, link, and hashtags. Keep under 250 tokens."
     )
 

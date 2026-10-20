@@ -13,6 +13,12 @@ except ImportError:
 IBM_RSS_URL = "https://newsroom.ibm.com/rss"
 LOOKBACK_DAYS = 7
 
+# ── Tavily web-search budget ───────────────────────────────────────────────
+# Each Tavily "basic" search costs 1 credit.  Keeping this at 5 per weekly
+# run leaves a 25-credit buffer inside the 30-credit weekly plan limit,
+# even if the scraper is re-run manually during the week.
+TAVILY_MAX_SEARCHES_PER_WEEK = 5
+
 # Keywords that flag eye-catching IBM headlines.
 # Matched case-insensitively against headline text.
 KEYWORDS = [
