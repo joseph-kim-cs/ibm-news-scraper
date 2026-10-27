@@ -66,6 +66,24 @@ def _moon_slug(headline: Headline) -> str:
     )
 
 
+# Style-only reference (non-IBM subject). Used in the LLM prompt to show the
+# structure of a business-value post; never used as a fallback template.
+_STYLE_SAMPLE_EXTERNAL = (
+    "Reuters got a look at Anthropic\u2019s IPO prospectus this week. The company is "
+    "reportedly aiming for a valuation above $2 trillion while carrying $518 billion "
+    "in future compute commitments.\n\n"
+    "Anthropic has a lot to balance going forward. To protect its safety mission, CEO "
+    "Dario Amodei and six co-founders will hold 50.1% of the voting power. But that "
+    "infrastructure bill will put pressure on their decisions. Two customers drove "
+    "nearly a quarter of its revenue, and many large clients aren\u2019t locked into "
+    "long-term contracts.\n\n"
+    "Those clients keep paying only where AI delivers results, and that usually comes "
+    "down to whether their internal data is ready for it.\n\n"
+    "Compute costs are locked in. Much of the revenue isn\u2019t. How Anthropic closes "
+    "that gap without giving up its mission will say a lot about the rest of the market."
+)
+
+
 def _data_slug(headline: Headline) -> str:
     return (
         "IBM\u2019s Data business grew 20% in Q3.\n\n"
@@ -144,15 +162,26 @@ def _build_headline_prompt(headline: Headline) -> str:
         "in a distinct, authentic voice.\n"
         "Style characteristics:\n"
         "- Conversational, genuine, reflective, and relatable hook.\n"
-        "- Connect the announcement to broader business impact: making complex technology "
-        "easier to understand and act on, or enhancing human capability.\n"
+        "- Open with a concrete fact or number from the news (as in Samples 3 and 4).\n"
+        "- Connect the announcement to broader business impact: where AI spend is going, "
+        "why data readiness matters, or making complex technology easier to understand "
+        "and act on.\n"
+        "- Build the post as: hook with a specific fact, context or tension, the business "
+        "implication, then a short closing takeaway or opinion.\n"
         "- Concise, punchy paragraphs.\n"
         "- Include the article link and 3-5 relevant hashtags (e.g. #IBM #AI #watsonx).\n"
+        "- Only use figures and facts found in the headline or the web context below; "
+        "never invent statistics.\n"
         "- CRITICAL CONSTRAINT: Keep the entire output strictly under 250 tokens (~180 words).\n\n"
+        "SUBJECT RULE: The post must be about the IBM announcement below. Other companies "
+        "may appear only as supporting context (a partner, customer, or market data point). "
+        "Sample 4 is about a non-IBM company purely to show the writing structure; never "
+        "write a post whose subject is a company other than IBM.\n\n"
         "Reference style samples:\n"
         f"--- SAMPLE 1 ---\n{sample_sports}\n\n"
         f"--- SAMPLE 2 ---\n{sample_moon}\n\n"
-        f"--- SAMPLE 3 ---\n{sample_data}\n\n"
+        f"--- SAMPLE 3 (IBM) ---\n{sample_data}\n\n"
+        f"--- SAMPLE 4 (structure only, non-IBM subject) ---\n{_STYLE_SAMPLE_EXTERNAL}\n\n"
         f"Draft a LinkedIn post for this announcement:\n"
         f"Headline: {headline.title}\n"
         f"URL: {headline.url}\n"

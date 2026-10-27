@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import urllib.request
+from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from typing import List
 
@@ -20,6 +21,12 @@ try:
     from bs4 import BeautifulSoup  # type: ignore
 except ImportError:
     BeautifulSoup = None
+
+
+def _is_ibm_url(url: str) -> bool:
+    """True if *url* is hosted on ibm.com (or a subdomain)."""
+    host = (urlparse(url).hostname or "").lower()
+    return host == "ibm.com" or host.endswith(".ibm.com")
 
 
 def _fetch_rss() -> List[Headline]:
@@ -93,6 +100,9 @@ def scrape_headlines() -> List[Headline]:
     except Exception as exc:
         print(f"[warn] RSS scrape failed: {exc}", file=sys.stderr)
     all_items.extend(_fetch_latest_blog_cards())
+
+    # IBM news only: drop anything not hosted on ibm.com.
+    all_items = [hl for hl in all_items if _is_ibm_url(hl.url)]
 
     # Deduplicate by title (case-insensitive).
     seen_titles: set[str] = set()

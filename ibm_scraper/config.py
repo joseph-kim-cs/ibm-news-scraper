@@ -10,7 +10,7 @@ except ImportError:
     pass
 
 # ── scraping constants ─────────────────────────────────────────────────────
-IBM_RSS_URL = "https://newsroom.ibm.com/rss"
+IBM_RSS_URL = "https://newsroom.ibm.com/announcements?pagetemplate=rss"
 LOOKBACK_DAYS = 7
 
 # ── Tavily web-search budget ───────────────────────────────────────────────
@@ -70,7 +70,7 @@ KEYWORDS = [
     # Business & partnerships
     "partnership", "collaboration", "acquisition", "investment",
     "venture", "startup", "ecosystem", "alliance", "joint venture",
-    "expansion", "launch", "announcement",
+    "expansion", "launch", "announcement", "quarter results",
     # Awards & recognition
     "award", "patent", "recognition", "ranked", "leader", "gartner",
     "forrester", "idc", "analyst", "innovation",
