@@ -66,6 +66,21 @@ def _moon_slug(headline: Headline) -> str:
     )
 
 
+def _data_slug(headline: Headline) -> str:
+    return (
+        "IBM\u2019s Data business grew 20% in Q3.\n\n"
+        "The AI headlines are mostly about models. But in Confluent\u2019s 2026 Data "
+        "Streaming Report, 72% of 4,600+ IT leaders said a lack of real-time data "
+        "infrastructure is stalling their AI, up from 61% a year earlier.\n\n"
+        "Companies are starting to spend on that gap. Confluent\u2019s bookings alone "
+        "grew about 20%, and its job is getting live data to AI instead of "
+        "yesterday\u2019s batch load. The growth isn\u2019t only acquired, either: more "
+        "than four points of IBM\u2019s software growth this quarter were organic.\n\n"
+        "Models are getting cheaper and easier to swap. The data foundation underneath "
+        "them isn\u2019t. That\u2019s where I think durable AI spending is heading."
+    )
+
+
 def _breakthrough_slug(headline: Headline) -> str:
     return (
         f"{headline.title}\n\n"
@@ -114,6 +129,9 @@ def _build_headline_prompt(headline: Headline) -> str:
     sample_moon = _moon_slug(
         Headline(title="NASA & IBM Moon Model", url="", published=datetime.now())
     )
+    sample_data = _data_slug(
+        Headline(title="IBM Data Business Growth", url="", published=datetime.now())
+    )
     context_block = ""
     if headline.tavily_context:
         context_block = (
@@ -134,6 +152,7 @@ def _build_headline_prompt(headline: Headline) -> str:
         "Reference style samples:\n"
         f"--- SAMPLE 1 ---\n{sample_sports}\n\n"
         f"--- SAMPLE 2 ---\n{sample_moon}\n\n"
+        f"--- SAMPLE 3 ---\n{sample_data}\n\n"
         f"Draft a LinkedIn post for this announcement:\n"
         f"Headline: {headline.title}\n"
         f"URL: {headline.url}\n"
