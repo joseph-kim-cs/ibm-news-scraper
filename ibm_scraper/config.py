@@ -10,8 +10,17 @@ except ImportError:
     pass
 
 # ── scraping constants ─────────────────────────────────────────────────────
+# IBM's newsroom RSS feeds return only 5 items, so the HTML listings are primary.
 IBM_RSS_URL = "https://newsroom.ibm.com/announcements?pagetemplate=rss"
-LOOKBACK_DAYS = 7
+IBM_RESEARCH_RSS_URL = "https://research.ibm.com/rss"
+IBM_NEWSROOM_LISTINGS = [
+    "https://newsroom.ibm.com/announcements?l=50",
+    "https://newsroom.ibm.com/campaign?l=100",
+]
+LOOKBACK_DAYS = 14
+DEFAULT_MAX_DRAFTS = 7
+MAX_ARTICLE_CHARS = 7000
+MAX_QUANTUM_IN_TOP_STORIES = 2
 
 # ── Tavily web-search budget ───────────────────────────────────────────────
 # Each Tavily "basic" search costs 1 credit.  Keeping this at 5 per weekly
@@ -80,4 +89,24 @@ KEYWORDS = [
 STOP_PHRASES = [
     "dividends", "quarterly earnings", "financial results",
     "board of directors", "leadership appointment", "earnings per share",
+]
+
+# Evergreen explainers and recurring features that are not news.
+NON_NEWS_TITLE_PATTERNS = [
+    r"^what (?:is|are)\b",
+    r"^how to\b",
+    r"\bponder this\b",
+    r"\brelease summary\b",
+]
+
+# Editorial ranking signals, matched against the headline.
+RANKING_SIGNALS = [
+    (r"\b(?:study|survey|index|report)\b", 3.0),
+    (r"\b(?:acquires?|acquisition|to buy)\b", 3.0),
+    (r"\b(?:nvidia|amd|microsoft|nasa|oak ridge|fermilab|openai|anthropic)\b", 2.0),
+    (r"\b(?:announces?|launch(?:es)?|unveils?|introduces?|demonstrates?|expands?)\b", 1.5),
+    (r"\bannounces winner\b", -1.5),
+    (r"\b(?:prize|startup challenge|impact accelerator|named a leader)\b", -4.0),
+    (r"\b(?:magic quadrant|marketscape)\b", -4.0),
+    (r"\?$", -2.0),
 ]

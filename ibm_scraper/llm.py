@@ -8,10 +8,14 @@ Priority order:
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from typing import Optional
 
 # ── optional dep ──────────────────────────────────────────────────────────
@@ -19,6 +23,11 @@ try:
     import requests  # type: ignore
 except ImportError:
     requests = None
+
+
+BOB_DISABLED_TOOL_GROUPS = "read,edit,command,browser,mcp,subagent"
+BOB_MAX_ATTEMPTS = 3
+BOB_TIMEOUT_SECONDS = 90
 
 
 def resolve_api_key() -> Optional[str]:
@@ -159,81 +168,92 @@ def _call_watsonx(
 
 
 def _clean_llm_response(text: str) -> str:
-    """Strip transcript wrappers, terminal ANSI codes, and prompt echoes."""
-    import re
-
-    # 1. Remove ANSI escape sequences (e.g. hyperlinks \x1b]8;;\x1b\)
-    ansi_escape = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\].*?(?:\x1b\\|\x07))")
-    text = ansi_escape.sub("", text)
-
-    # 2. Extract Assistant response if output has chat transcript headers like "Assistant (1) ... "
-    if "Assistant" in text:
-        parts = re.split(r"Assistant(?:\s*\(\d+\))?.*?\n", text)
-        if len(parts) > 1:
-            text = parts[-1]
-
-    # 3. If "User" section exists before, remove it
-    if "User (" in text and "Assistant" not in text:
-        markers = [
-            "Output ONLY the LinkedIn post text, link, and hashtags.",
-            "Output ONLY the LinkedIn post text, link (if any), and hashtags.",
-            "Keep under 250 tokens.",
-            "Keep under 280 tokens.",
-        ]
-        for marker in markers:
-            if marker in text:
-                text = text.split(marker)[-1]
-                break
-
-    # 4. Remove code fence wrappers if present
-    text = re.sub(r"^```(?:markdown|text)?\s*", "", text, flags=re.IGNORECASE)
+    """Strip terminal codes, code fences, and divider lines from model output."""
+    text = re.sub(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\].*?(?:\x1b\\|\x07))", "", text)
+    text = re.sub(r"^```(?:markdown|text)?\s*", "", text.strip(), flags=re.IGNORECASE)
     text = re.sub(r"\s*```$", "", text)
-
-    # 5. Remove leading/trailing horizontal rules or dividers
     text = re.sub(r"^[─\-=_\s]+", "", text)
     text = re.sub(r"[─\-=_\s]+$", "", text)
-
     return text.strip()
 
 
+def _parse_bob_output(stdout: str) -> Optional[str]:
+    """Return the final message from Bob's JSON or JSON-lines output."""
+    for line in reversed(stdout.strip().splitlines()):
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict) or data.get("type") != "result":
+            continue
+        if data.get("status") != "success":
+            return None
+        message = data.get("last_message")
+        if isinstance(message, str) and message.strip():
+            return _clean_llm_response(message)
+        return None
+    return None
+
+
 def _call_bob_cli(prompt: str, api_key: str) -> Optional[str]:
-    """Try the Bob CLI in headless mode (works natively with a Bob API key)."""
+    """Run Bob headless with no tools, retrying transient failures.
+
+    Prompts include text fetched from the web, so Bob runs in an empty folder
+    with its tool groups disabled.
+    """
     bob_bin = shutil.which("bob")
     if not bob_bin:
         return None
 
-    try:
-        env = dict(os.environ)
-        env["BOBSHELL_API_KEY"] = api_key
-        env["BOB_API_KEY"] = api_key
+    workspace = os.path.join(tempfile.gettempdir(), "ibm-linkerdrafter-bob")
+    os.makedirs(workspace, exist_ok=True)
+    env = dict(os.environ, BOBSHELL_API_KEY=api_key, BOB_API_KEY=api_key)
+    cmd = [
+        bob_bin, "run",
+        "--accept-license",
+        "--trust",
+        "--disable-mcp",
+        "--disable-subagents",
+        "--disable-tool-groups", BOB_DISABLED_TOOL_GROUPS,
+        "--workspace", workspace,
+        "--format", "json",
+        "--max-turns", "1",
+        "--log-level", "error",
+    ]
+    team_id = os.getenv("BOB_TEAM_ID")
+    if team_id:
+        cmd.extend(["--team-id", team_id])
+    cmd.append(prompt)
 
-        cmd = [
-            bob_bin, "run",
-            "--accept-license",
-            "--trust",
-            "--disable-mcp",
-            "--disable-subagents",
-            "--format", "pretty",
-            "--max-turns", "1",
-            "--log-level", "error",
-            prompt,
-        ]
-        team_id = os.getenv("BOB_TEAM_ID")
-        if team_id:
-            cmd.extend(["--team-id", team_id])
-
-        result = subprocess.run(
-            cmd, env=env, capture_output=True, text=True, timeout=90, check=False
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            raw = result.stdout.strip()
-            return _clean_llm_response(raw)
-        if result.stderr.strip():
-            print(
-                f"[warn] Bob CLI returned code {result.returncode}: {result.stderr[:200]}",
-                file=sys.stderr,
+    for attempt in range(1, BOB_MAX_ATTEMPTS + 1):
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=workspace,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=BOB_TIMEOUT_SECONDS,
+                check=False,
             )
-    except Exception as exc:
-        print(f"[warn] Bob CLI execution failed: {exc}", file=sys.stderr)
+            if result.returncode == 0:
+                text = _parse_bob_output(result.stdout)
+                if text:
+                    return text
+                problem = "no usable message in output"
+            else:
+                problem = f"exit {result.returncode}: {result.stderr.strip()[:200]}"
+        except subprocess.TimeoutExpired:
+            problem = f"timed out after {BOB_TIMEOUT_SECONDS}s"
+        except OSError as exc:
+            problem = str(exc)
+
+        print(
+            f"[warn] Bob CLI attempt {attempt}/{BOB_MAX_ATTEMPTS} failed: {problem}",
+            file=sys.stderr,
+        )
+        if attempt < BOB_MAX_ATTEMPTS:
+            time.sleep(attempt * 3)
 
     return None

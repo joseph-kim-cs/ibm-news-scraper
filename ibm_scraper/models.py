@@ -16,6 +16,10 @@ class Headline:
     published: datetime
     source: str = "IBM Newsroom"
     tavily_context: str = ""  # populated by tavily_search.enrich_headlines()
+    body: str = ""  # article text fetched from the source page
+    score: float = 0.0  # editorial ranking score
+    drafted: bool = False  # True when the LLM produced a post
+    draft_warning: str = ""  # checks to review before posting
 
 
 @dataclass

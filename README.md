@@ -2,20 +2,21 @@
 
 A Python app with two modes:
 
-1. **Headline mode** — scrapes IBM press releases and IBM Research blog posts from the last 7 days, filters for eye-catching business-relevant headlines, and drafts LinkedIn posts in your signature storytelling style.
+1. **Headline mode** — scrapes IBM press releases, newsroom posts, and IBM Research blog posts from the last 14 days, ranks the most notable stories, and drafts LinkedIn posts from each article in your signature storytelling style.
 2. **Event mode** — takes any event you attended (IBM Think, a customer workshop, a conference, anything) and drafts a personalized LinkedIn post about your experience.
 
 ## What it does
 
 ### Headline mode
-1. **Scrape** — pulls the last 7 days of headlines from:
-   - IBM Newsroom RSS feed: `https://newsroom.ibm.com/rss`
-   - IBM Research "latest" blog cards (HTML fallback)
-2. **Filter** — keeps only headlines containing keywords like `AI`, `watsonx`,
-   `moon`, `NASA`, `US Open`, `tennis`, `open-source`, `quantum`, `cloud`, etc.
-   Drops financial/boilerplate noise (quarterly earnings, dividends, board
-   appointments).
-3. **Draft** — generates drafts for the top 10 headlines (customizable with `--count N`) and maps each headline to storytelling templates that mirror your voice.
+1. **Scrape** — pulls the last 14 days of dated stories from the IBM Newsroom
+   listings and the IBM Research RSS feed.
+2. **Filter and rank** — removes duplicates, explainers, and financial boilerplate,
+   reads each article, and ranks stories by news value. At most two quantum stories
+   appear among the top results by default.
+3. **Draft** — generates drafts for the top 7 stories (customizable with `--count N`)
+   using the article text. Numbers that cannot be found in the source are retried and
+   then flagged for review. If drafting fails, the file says so instead of using a
+   generic template.
 
 ### Event mode
 Provide details about any event you attended and the app drafts a LinkedIn post
@@ -73,7 +74,7 @@ and a macOS desktop notification fires when it's ready.
 
 ## LLM Configuration (.env)
 
-The scraper dynamically generates personalized drafts under 250 tokens in your signature voice, using the built-in templates as few-shot style references.
+The scraper generates drafts of about 170 words in your signature voice, using the built-in samples as style references.
 
 Configure your `.env` file based on your provider:
 
@@ -92,7 +93,7 @@ WATSONX_URL=https://us-south.ml.cloud.ibm.com
 WATSONX_MODEL_ID=ibm/granite-3-8b-instruct
 ```
 
-*(If no endpoint or API key is provided, the scraper automatically falls back to the deterministic local storytelling templates).*
+*(If no LLM is available, headline drafts are marked as not generated. Event mode still falls back to its local template.)*
 
 ## Scheduling it
 
@@ -114,7 +115,7 @@ If you prefer crontab:
 
 ### What happens on Monday morning?
 1. At 8:00 AM on Monday (or as soon as you wake/open your Mac), the script runs seamlessly in the background.
-2. It scrapes and filters the last 7 days of IBM news.
+2. It scrapes and ranks the last 14 days of IBM news.
 3. It generates LinkedIn drafts using Bob AI and saves them to `ibm-news-scraper/drafts/linkedin_draft_YYYY-MM-DD_HHMM.md`.
 4. A **native macOS desktop notification** alerts you that your drafts are ready.
 5. You can open the generated markdown file, pick your favorite draft, and post.

@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 
 from ibm_scraper import draft_event_post, run
+from ibm_scraper.config import DEFAULT_MAX_DRAFTS
 from ibm_scraper.models import Event
 
 
@@ -33,8 +34,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Print drafts to stdout instead of saving files",
     )
     parser.add_argument(
-        "--count", type=int, default=10,
-        help="Number of headline draft options to generate (default: 10)",
+        "--count", type=int, default=DEFAULT_MAX_DRAFTS,
+        help=f"Number of headline draft options to generate (default: {DEFAULT_MAX_DRAFTS})",
     )
     parser.add_argument(
         "--no-notify", action="store_true",
