@@ -39,6 +39,23 @@ python main.py                       # save all 10 drafts to ./drafts/ & trigger
 
 ---
 
+## Web app
+
+```bash
+./run_web.sh
+```
+
+- **Browser UI:** http://127.0.0.1:8000 — preview ranked headlines, generate and edit
+  drafts, draft event posts, and browse everything saved in `drafts/`.
+- **Swagger UI:** http://127.0.0.1:8000/docs — try every API endpoint.
+
+The server only accepts requests from this machine. Set `PORT` to use another port.
+Generating drafts uses the same Tavily searches and LLM calls as `main.py`; previewing
+headlines uses neither. One job runs at a time, and job progress is lost if the server
+restarts.
+
+---
+
 ## Drafting a LinkedIn post for an event
 
 Use the `--event-name` and `--event-date` flags to switch into event mode.

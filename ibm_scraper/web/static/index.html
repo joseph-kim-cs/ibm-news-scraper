@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IBM Headline Linker</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>IBM Headline Linker</h1>
+    <div class="services" id="services" aria-label="Service status"></div>
+    <a class="docs-link" href="/docs" target="_blank" rel="noopener">API docs</a>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" id="tab-headlines" aria-controls="view-headlines" aria-selected="true">Headlines</button>
+    <button role="tab" id="tab-event" aria-controls="view-event" aria-selected="false" tabindex="-1">Event post</button>
+    <button role="tab" id="tab-saved" aria-controls="view-saved" aria-selected="false" tabindex="-1">Saved drafts</button>
+  </nav>
+
+  <div class="notice" id="notice" role="alert" hidden></div>
+
+  <section class="job" id="job" aria-live="polite" hidden>
+    <div class="job-line">
+      <span class="spinner" id="job-spinner" aria-hidden="true"></span>
+      <strong id="job-title"></strong>
+      <span class="job-elapsed" id="job-elapsed"></span>
+      <span class="job-activity" id="job-activity"></span>
+    </div>
+    <details>
+      <summary>Log</summary>
+      <pre id="job-log" tabindex="0"></pre>
+    </details>
+  </section>
+
+  <main>
+    <section id="view-headlines" role="tabpanel" aria-labelledby="tab-headlines">
+      <form class="toolbar" id="headline-form">
+        <label class="field field-small">
+          <span>Drafts</span>
+          <input type="number" id="count" min="1" max="20" required>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="headline-save" checked>
+          <span>Save to drafts folder</span>
+        </label>
+        <button class="primary" type="submit" data-run>Generate drafts</button>
+        <button type="button" id="preview" data-run>Preview headlines</button>
+        <span class="hint" id="credit-hint"></span>
+      </form>
+      <div id="headline-results"></div>
+    </section>
+
+    <section id="view-event" role="tabpanel" aria-labelledby="tab-event" hidden>
+      <div class="event-layout">
+        <form class="event-form" id="event-form">
+          <label class="field">
+            <span>Event name</span>
+            <input id="event-name" required maxlength="200" autocomplete="off">
+          </label>
+          <div class="field-row">
+            <label class="field">
+              <span>Date</span>
+              <input type="date" id="event-date" required>
+            </label>
+            <label class="field">
+              <span>Location <em>optional</em></span>
+              <input id="event-location" maxlength="200" autocomplete="off">
+            </label>
+          </div>
+          <label class="field">
+            <span>Your notes <em>optional</em></span>
+            <textarea id="event-description" rows="8" maxlength="5000"
+              placeholder="Sessions, conversations, and what surprised you"></textarea>
+          </label>
+          <label class="field">
+            <span>Event link <em>optional</em></span>
+            <input type="url" id="event-url" pattern="https?://.*" placeholder="https://" autocomplete="off">
+          </label>
+          <label class="check">
+            <input type="checkbox" id="event-save" checked>
+            <span>Save to drafts folder</span>
+          </label>
+          <button class="primary" type="submit" data-run>Draft post</button>
+        </form>
+        <div id="event-results">
+          <p class="empty">Your draft will appear here.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-saved" role="tabpanel" aria-labelledby="tab-saved" hidden>
+      <div class="toolbar">
+        <label class="field field-wide">
+          <span>File</span>
+          <select id="saved-file"></select>
+        </label>
+      </div>
+      <div id="saved-results"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
